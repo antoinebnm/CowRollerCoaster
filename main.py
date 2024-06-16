@@ -34,6 +34,7 @@ V_DRAG=2
 isDrag=0
 
 # Additionnal variables
+startPos = None
 isAnimation = False
 controlPoints = []
 
@@ -220,8 +221,27 @@ def drawFloor():
     glDisable(GL_TEXTURE_2D)	
     drawFrame(5)				# Draw x, y, and z axis.
 
+# Function to calculate Catmull-Rom spline
+def catmull_rom_spline(p0, p1, p2, p3, t):
+    return 0.5 * ((2 * p1) +
+                  (-p0 + p2) * t +
+                  (2 * p0 - 5 * p1 + 4 * p2 - p3) * t**2 +
+                  (-p0 + 3 * p1 - 3 * p2 + p3) * t**3)
+
+def interpolate(control_points, num_points=100):
+    points = []
+    for i in range(len(control_points) - 3):
+        for t in np.linspace(0, 1, num_points):
+            p0 = control_points[i][:3, 3]
+            p1 = control_points[i+1][:3, 3]
+            p2 = control_points[i+2][:3, 3]
+            p3 = control_points[i+3][:3, 3]
+            points.append(catmull_rom_spline(p0, p1, p2, p3, t))
+    return points
+
 def display():
-    global cameraIndex, cow2wld, isAnimation
+    global cameraIndex, cow2wld, isAnimation, isDrag
+
     glClearColor(0.8, 0.9, 0.9, 1.0)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)				# Clear the screen
     # set viewing transformation.
@@ -239,10 +259,24 @@ def display():
         for pos in controlPoints:
             drawCow(pos, False)
     
-    drawCow(cow2wld, cursorOnCowBoundingBox)														# Draw cow.
+        drawCow(cow2wld, cursorOnCowBoundingBox)														# Draw cow.
     
     if len(controlPoints) == 6:
+        controlPoints.insert(0, startPos)
+        isDrag = 0
         isAnimation = True
+
+    if isAnimation:
+        passagePoints = interpolate(controlPoints)
+        # Animation timing
+        animation_speed = 1  # Adjust to slow down or speed up the animation
+        animStartTime = glfw.get_time()
+
+        for lap in range (1,4):     # Execute the animation 3 times
+            print("control",controlPoints[lap])
+            print("passage",passagePoints[lap])
+
+        animTime=(glfw.get_time()-animStartTime) * animation_speed
 
     glFlush()
 
@@ -260,7 +294,7 @@ def reshape(window, w, h):
     glLoadIdentity()                       # Reset The Projection Matrix
 
 def initialize(window):
-    global cursorOnCowBoundingBox, floorTexID, cameraIndex, camModel, cow2wld, cowModel
+    global cursorOnCowBoundingBox, floorTexID, cameraIndex, camModel, cow2wld, cowModel, startPos
     cursorOnCowBoundingBox=False
     # Set up OpenGL state
     glShadeModel(GL_SMOOTH)         # Set Smooth Shading
@@ -305,6 +339,7 @@ def initialize(window):
     glTranslated(0,-cowModel.bbmin[1],-8)	# Set the location of cow.
     glRotated(-90, 0, 1, 0)		# Set the direction of cow. These information are stored in the matrix of GL.
     cow2wld=glGetDoublev(GL_MODELVIEW_MATRIX).T # convert column-major to row-major 
+    startPos = cow2wld
     glPopMatrix()			# Pop the matrix on stack to GL.
 
 
@@ -341,19 +376,27 @@ def onMouseButton(window,button, state, mods):
                 currentPos = ray.getPoint(c[1])
                 cowPickLocalPos = transform(np.linalg.inv(cow2wld), currentPos)
                 pickInfo = PickInfo(c[1], currentPos, cow2wld, cowPickLocalPos)
+
                 isDrag = V_DRAG
             print( "Left mouse down-click at %d %d\n" % (x,y))
             # start vertical dragging
 
         elif state == GLFW_UP:          # Conditions for click release
-            if isDrag == 0:
+            if isDrag == 0:         # First click on the scene
+                isDrag = H_DRAG
+            elif isDrag == V_DRAG:
+                controlPoints.append(cow2wld)
+
+                ray = screenCoordToRay(window, x, y)
+                pp = pickInfo
+                p = Plane(np.array((1, 0, 0)), pp.cowPickPosition)
+                c = ray.intersectsPlane(p)
+                currentPos = ray.getPoint(c[1])
+                cowPickLocalPos = transform(np.linalg.inv(cow2wld), currentPos)
+                pickInfo = PickInfo(c[1], currentPos, cow2wld, cowPickLocalPos)
+
                 isDrag = H_DRAG
             elif isDrag == H_DRAG:
-                isDrag = 0
-            elif isDrag == V_DRAG:
-                isDrag = 0
-            
-            if not isDrag:
                 controlPoints.append(cow2wld)
 
             print( "Left mouse up\n")
