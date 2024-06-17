@@ -318,17 +318,34 @@ def display():
             right /= np.linalg.norm(right)
             up = np.cross(direction, right)
 
+            """print(right)
+            print(up)
+            print(direction)"""
+
+            """cos = right[0]
+            sin = right[2]
+
+            rota_z = np.array([
+                [cos, -sin, 0, 0],
+                [sin, cos, 0, 0],
+                [0, 0, 1, 0],
+                [0, 0, 0, 1]
+            ])"""
+
             rotation_matrix = np.eye(4)
             rotation_matrix[0, 0:3] = -right
             rotation_matrix[1, 0:3] = up
             rotation_matrix[2, 0:3] = direction
 
-            cow2wld = rotation_matrix
+            #drawCow(cowPos, False) # movement
+
+            # Combine rotation and translation to form cow2wld transformation
+            cow2wld = np.eye(4)
+            cow2wld[:3, :3] = rotation_matrix[:3, :3]
+            cow2wld[:3, 3] = cowPos[:3, 3]
 
             print(f"Animation time: {animTime}, Segment: {segment}, t: {t}")
             print(f"Direction: {direction}, Rotation: {rotation_matrix}, Position: {cowPos}")
-
-            drawCow(cowPos, False) # movement
 
             drawCow(cow2wld, False) # rotate
 
@@ -337,10 +354,6 @@ def display():
         
 
     glFlush()
-
-def interpolate_matrices(mat1, mat2, t):
-    # Linear interpolation between two matrices
-    return (1 - t) * mat1 + t * mat2
 
 def reshape(window, w, h):
     width = w

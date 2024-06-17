@@ -317,6 +317,7 @@ def display():
 
         cow2wld = rotation_matrix
         print("cow2wld",cow2wld)
+        print("cowPos",cowPos)
         setTranslation(cow2wld, cowPos)
 
     drawCow(cow2wld, cursorOnCowBoundingBox)  # Draw cow.
