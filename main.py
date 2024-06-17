@@ -37,6 +37,7 @@ isDrag=0
 startPos = None
 isAnimation = False
 controlPoints = []
+lap = 1
 
 class PickInfo:
     def __init__(self, cursorRayT, cowPickPosition, cowPickConfiguration, cowPickPositionLocal):
@@ -196,6 +197,7 @@ def drawCow(_cow2wld, drawBB):
         glVertex3d( cow.bbmax[0], cow.bbmax[1], cow.bbmax[2])
         glEnd()
     glPopMatrix()			# Pop the matrix in stack to GL. Change it the matrix before drawing cow.
+    
 def drawFloor():
 
     glDisable(GL_LIGHTING)
@@ -228,55 +230,61 @@ def catmull_rom_spline(p0, p1, p2, p3, t):
                   (2 * p0 - 5 * p1 + 4 * p2 - p3) * t**2 +
                   (-p0 + 3 * p1 - 3 * p2 + p3) * t**3)
 
-def interpolate(control_points, num_points=100):
-    points = []
-    for i in range(len(control_points) - 3):
-        for t in np.linspace(0, 1, num_points):
-            p0 = control_points[i][:3, 3]
-            p1 = control_points[i+1][:3, 3]
-            p2 = control_points[i+2][:3, 3]
-            p3 = control_points[i+3][:3, 3]
-            points.append(catmull_rom_spline(p0, p1, p2, p3, t))
-    return points
+def interpolate_matrices(mat1, mat2, t):
+    # Linear interpolation between two matrices
+    return (1 - t) * mat1 + t * mat2
 
 def display():
-    global cameraIndex, cow2wld, isAnimation, isDrag
+    global cameraIndex, cow2wld, isAnimation, isDrag, animStartTime, lap
 
     glClearColor(0.8, 0.9, 0.9, 1.0)
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)				# Clear the screen
-    # set viewing transformation.
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    
     glLoadMatrixd(wld2cam[cameraIndex].T)
 
-    drawOtherCamera()													# Locate the camera's position, and draw all of them.
-    drawFloor()													# Draw floor.
+    drawOtherCamera()
+    drawFloor()
 
-    # TODO: 
-    # update cow2wld here to animate the cow.
-    #animTime=glfw.get_time()-animStartTime
-    #you need to modify both the translation and rotation parts of the cow2wld matrix every frame.
-    # you would also probably need a state variable for the UI.
     if not isAnimation:
         for pos in controlPoints:
             drawCow(pos, False)
-    
-        drawCow(cow2wld, cursorOnCowBoundingBox)														# Draw cow.
-    
-    if len(controlPoints) == 6:
+        drawCow(cow2wld, cursorOnCowBoundingBox)
+
+    if len(controlPoints) == 6:     # At sixth position, add start position + starts animation
         controlPoints.insert(0, startPos)
         isDrag = 0
+
+        animStartTime = glfw.get_time()
         isAnimation = True
 
     if isAnimation:
-        passagePoints = interpolate(controlPoints)
-        # Animation timing
-        animation_speed = 1  # Adjust to slow down or speed up the animation
-        animStartTime = glfw.get_time()
+        fps = 30
+        duration = 5
+        frame_time = 1 / fps
 
-        for lap in range (1,4):     # Execute the animation 3 times
-            print("control",controlPoints[lap])
-            print("passage",passagePoints[lap])
+        animTime = glfw.get_time() - animStartTime
+        print("animTime", round(animTime, 5))
 
-        animTime=(glfw.get_time()-animStartTime) * animation_speed
+        segment_duration = duration / (len(controlPoints) - 1)
+        segment = int(animTime // segment_duration)
+        t = (animTime % segment_duration) / segment_duration
+
+        if segment >= len(controlPoints) - 1:
+            if lap == 3:
+                isAnimation = False
+            else:
+                lap += 1
+                animStartTime = glfw.get_time()
+            
+            segment = len(controlPoints) - 2
+            t = 1.0
+
+        else:
+            current_matrix = interpolate_matrices(controlPoints[segment], controlPoints[segment + 1], t)
+            drawCow(current_matrix, False)
+
+        # Control animation speed
+        time.sleep(frame_time)
 
     glFlush()
 
