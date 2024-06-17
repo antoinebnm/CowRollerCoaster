@@ -1,6 +1,7 @@
 import glfw
 import sys
 import pdb
+import math
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.arrays import ArrayDatatype
@@ -224,15 +225,16 @@ def drawFloor():
     drawFrame(5)				# Draw x, y, and z axis.
 
 # Function to calculate Catmull-Rom spline
-def catmull_rom_spline(p0, p1, p2, p3, t):
-    return 0.5 * ((2 * p1) +
-                  (-p0 + p2) * t +
-                  (2 * p0 - 5 * p1 + 4 * p2 - p3) * t**2 +
-                  (-p0 + 3 * p1 - 3 * p2 + p3) * t**3)
-
-def interpolate_matrices(mat1, mat2, t):
-    # Linear interpolation between two matrices
-    return (1 - t) * mat1 + t * mat2
+def catmull_rom_spline(P0, P1, P2, P3, t):
+    """
+    Computes the point on a Catmull-Rom spline at parameter t.
+    """
+    return 0.5 * (
+        (2 * P1) +
+        (-P0 + P2) * t +
+        (2 * P0 - 5 * P1 + 4 * P2 - P3) * t**2 +
+        (-P0 + 3 * P1 - 3 * P2 + P3) * t**3
+    )
 
 def display():
     global cameraIndex, cow2wld, isAnimation, isDrag, animStartTime, lap
@@ -250,7 +252,7 @@ def display():
             drawCow(pos, False)
         drawCow(cow2wld, cursorOnCowBoundingBox)
 
-    if len(controlPoints) == 6:     # At sixth position, add start position + starts animation
+    if len(controlPoints) == 6:     # At sixth position, add start position + start animation
         controlPoints.insert(0, startPos)
         isDrag = 0
 
@@ -259,19 +261,24 @@ def display():
 
     if isAnimation:
         fps = 30
-        duration = 5
+        duration = 10
         frame_time = 1 / fps
 
         animTime = glfw.get_time() - animStartTime
-        print("animTime", round(animTime, 5))
 
         segment_duration = duration / (len(controlPoints) - 1)
         segment = int(animTime // segment_duration)
         t = (animTime % segment_duration) / segment_duration
 
         if segment >= len(controlPoints) - 1:
+            print("Lap", lap, "finished.")
             if lap == 3:
+                print("Animation finished.")
                 isAnimation = False
+                cow2wld = controlPoints[0]
+                controlPoints.clear()
+                return
+            
             else:
                 lap += 1
                 animStartTime = glfw.get_time()
@@ -280,13 +287,60 @@ def display():
             t = 1.0
 
         else:
-            current_matrix = interpolate_matrices(controlPoints[segment], controlPoints[segment + 1], t)
-            drawCow(current_matrix, False)
+            p0 = controlPoints[(segment - 1) % len(controlPoints)]
+            p1 = controlPoints[segment]
+            p2 = controlPoints[(segment + 1) % len(controlPoints)]
+            p3 = controlPoints[(segment + 2) % len(controlPoints)]
+    
+            cowPos = catmull_rom_spline(p0, p1, p2, p3, t)
+    
+            # Compute the direction the cow is facing
+            next_t = t + frame_time  # small increment to find the next position
+            if next_t > 1:
+                next_segment = (segment + 1) % len(controlPoints)
+                next_t -= 1
+            else:
+                next_segment = segment
+
+            next_p0 = controlPoints[(next_segment - 1) % len(controlPoints)]
+            next_p1 = controlPoints[next_segment]
+            next_p2 = controlPoints[(next_segment + 1) % len(controlPoints)]
+            next_p3 = controlPoints[(next_segment + 2) % len(controlPoints)]
+
+            next_cowPos = catmull_rom_spline(next_p0, next_p1, next_p2, next_p3, next_t)
+
+            direction = next_cowPos[:3,3] - cowPos[:3,3]
+            direction /= np.linalg.norm(direction)
+
+            # Compute the right and up vectors
+            up = np.array([0, 1, 0])
+            right = np.cross(up, direction)
+            right /= np.linalg.norm(right)
+            up = np.cross(direction, right)
+
+            rotation_matrix = np.eye(4)
+            rotation_matrix[0, 0:3] = -right
+            rotation_matrix[1, 0:3] = up
+            rotation_matrix[2, 0:3] = direction
+
+            cow2wld = rotation_matrix
+
+            print(f"Animation time: {animTime}, Segment: {segment}, t: {t}")
+            print(f"Direction: {direction}, Rotation: {rotation_matrix}, Position: {cowPos}")
+
+            drawCow(cowPos, False) # movement
+
+            drawCow(cow2wld, False) # rotate
 
         # Control animation speed
         time.sleep(frame_time)
+        
 
     glFlush()
+
+def interpolate_matrices(mat1, mat2, t):
+    # Linear interpolation between two matrices
+    return (1 - t) * mat1 + t * mat2
 
 def reshape(window, w, h):
     width = w
@@ -405,7 +459,7 @@ def onMouseButton(window,button, state, mods):
 
                 isDrag = H_DRAG
             elif isDrag == H_DRAG:
-                controlPoints.append(cow2wld)
+                controlPoints.append(cow2wld)       # register current position to control points
 
             print( "Left mouse up\n")
             # start horizontal dragging using mouse-move events.
